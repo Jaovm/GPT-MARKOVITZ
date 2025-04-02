@@ -1,4 +1,6 @@
-import streamlit as st import yfinance as yf import pandas as pd
+import streamlit as st 
+import yfinance as yf 
+import pandas as pd
 
 def get_stock_data(ticker): stock = yf.Ticker(ticker) return stock.history(period="5y")
 
