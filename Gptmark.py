@@ -8,8 +8,8 @@ import streamlit as st
 # Função para baixar os dados históricos dos ativos
 def get_data(tickers, start_date, end_date):
     data = yf.download(tickers, start=start_date, end=end_date)
-    # Selecione 'Adj Close' para cada ativo
-    data = data['Adj Close']
+    # Agora o acesso à coluna 'Adj Close' é feito corretamente para múltiplos tickers
+    data = data['Adj Close']  # Acesso à coluna 'Adj Close' após download
     return data
 
 # Função para calcular o retorno diário e a matriz de covariância
