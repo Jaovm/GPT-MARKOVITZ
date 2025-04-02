@@ -1,118 +1,72 @@
-import yfinance as yf
-import streamlit as st
-import requests
-from bs4 import BeautifulSoup
+import streamlit as st import yfinance as yf import pandas as pd
 
-# Função para buscar dados financeiros no Yahoo Finance
-def get_fundamentals(ticker):
-    stock = yf.Ticker(ticker)
-    info = stock.info
-    
-    # Retorna os dados que vamos usar
-    pe_ratio = info.get('trailingPE', None)
-    pb_ratio = info.get('priceToBook', None)
-    eps = info.get('epsTrailingTwelveMonths', None)  # Lucro por ação (EPS)
-    eps_growth = info.get('earningsQuarterlyGrowth', None) * 100  # EPS Growth em %
-    market_cap = info.get('marketCap', None)
-    current_price = info.get('currentPrice', None)
-    dividend_yield = info.get('dividendYield', None)
-    target_mean_price = info.get('targetMeanPrice', None)  # Preço alvo médio estimado
-    sector = info.get('sector', None)  # Setor da empresa
-    
-    return pe_ratio, pb_ratio, eps, eps_growth, market_cap, current_price, dividend_yield, target_mean_price, sector
+def get_stock_data(ticker): stock = yf.Ticker(ticker) return stock.history(period="5y")
 
-# Função para buscar dados adicionais do Fundamentus (ex: ROE e Dívida/Patrimônio)
-def get_additional_data(ticker):
-    url = f'https://www.fundamentus.com.br/detalhes.php?papel={ticker}'
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36"}
-    response = requests.get(url, headers=headers)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    
-    try:
-        roe = soup.find(text="ROE").find_next('td').text.strip().replace(",", ".")
-        debt_to_equity = soup.find(text="Dívida/Patrimônio").find_next('td').text.strip().replace(",", ".")
-        return float(roe), float(debt_to_equity)
-    except AttributeError:
-        return None, None
+def calculate_metrics(ticker): stock = yf.Ticker(ticker) sector = stock.info.get("sector", "Unknown") metrics = {}
 
-# Função para calcular o preço teto
-def calculate_target_price(eps, pe_ratio_target=15):
-    if eps is not None:
-        target_price = eps * pe_ratio_target
-        return target_price
+# Dados financeiros
+try:
+    financials = stock.financials
+    balance_sheet = stock.balance_sheet
+    cash_flow = stock.cashflow
+except:
+    st.error("Erro ao buscar dados financeiros")
     return None
 
-# Função para realizar a análise de acordo com o setor
-def analyze_sector(sector, pe_ratio, pb_ratio, eps_growth, market_cap, current_price, dividend_yield, roe, debt_to_equity, target_price):
-    recommendations = []
-    price_analysis = ""
+# Seleção de métricas por setor
+if sector == "Financial Services":
+    metrics["P/B Ratio"] = stock.info.get("priceToBook", "N/A")
+    metrics["ROE"] = stock.info.get("returnOnEquity", "N/A")
+    metrics["Dividend Yield"] = stock.info.get("dividendYield", "N/A")
+elif sector == "Energy":
+    metrics["P/FCF"] = stock.info.get("priceToFreeCashFlows", "N/A")
+    metrics["EV/EBITDA"] = stock.info.get("enterpriseToEbitda", "N/A")
+    metrics["Debt/EBITDA"] = stock.info.get("debtToEquity", "N/A")
+elif sector == "Technology":
+    metrics["P/S Ratio"] = stock.info.get("priceToSalesTrailing12Months", "N/A")
+    metrics["Revenue Growth"] = stock.info.get("revenueGrowth", "N/A")
+    metrics["Gross Margin"] = stock.info.get("grossMargins", "N/A")
+elif sector == "Consumer Defensive":
+    metrics["P/E Ratio"] = stock.info.get("trailingPE", "N/A")
+    metrics["Dividend Yield"] = stock.info.get("dividendYield", "N/A")
+    metrics["EBITDA Margin"] = stock.info.get("ebitdaMargins", "N/A")
+elif sector == "Healthcare":
+    metrics["P/E Ratio"] = stock.info.get("trailingPE", "N/A")
+    metrics["P/S Ratio"] = stock.info.get("priceToSalesTrailing12Months", "N/A")
+    metrics["R&D Expense"] = stock.info.get("researchAndDevelopmentExpense", "N/A")
+elif sector == "Basic Materials":
+    metrics["EV/EBITDA"] = stock.info.get("enterpriseToEbitda", "N/A")
+    metrics["P/FCF"] = stock.info.get("priceToFreeCashFlows", "N/A")
+    metrics["Production Cost"] = stock.info.get("costOfRevenue", "N/A")
+else:
+    metrics["General P/E"] = stock.info.get("trailingPE", "N/A")
     
-    if sector == "Financials":
-        if pe_ratio and pe_ratio < 15:
-            recommendations.append("Recomendação de compra: Ação subvalorizada (P/E baixo)")
-        if roe and roe > 15:
-            recommendations.append("Recomendação: Ação com bom ROE")
-        if debt_to_equity and debt_to_equity < 1:
-            recommendations.append("Recomendação: Ação com boa relação dívida/patrimônio")
+return metrics, sector
 
-    elif sector == "Energy":
-        if eps_growth and eps_growth > 5:
-            recommendations.append("Recomendação: Ação com bom crescimento de lucros")
-        if pe_ratio and pe_ratio < 10:
-            recommendations.append("Recomendação de compra: Ação subvalorizada no setor de energia")
-        if current_price < target_price:
-            price_analysis = f"Ação está abaixo do preço teto de R${target_price:.2f} - Considerada barata para compra"
-
-    elif sector == "Technology":
-        if eps_growth and eps_growth > 15:
-            recommendations.append("Recomendação: Ação com bom crescimento (EPS > 15%)")
-        if pb_ratio and pb_ratio < 5:
-            recommendations.append("Recomendação: Ação com bom múltiplo P/B")
-
-    elif sector == "Consumer Defensive":
-        if dividend_yield and dividend_yield > 0.05:
-            recommendations.append("Recomendação: Ação com bom Dividend Yield")
-        if roe and roe > 20:
-            recommendations.append("Recomendação: Ação com excelente retorno sobre patrimônio")
-
-    else:
-        recommendations.append("Setor desconhecido, análise geral será fornecida.")
-    
-    # Recomendações de preço teto
-    if current_price < target_price:
-        price_analysis = f"Ação está abaixo do preço teto de R${target_price:.2f} - Considerada barata para compra"
-    else:
-        price_analysis = f"Ação está acima do preço teto de R${target_price:.2f} - Evite compra"
-    
-    return recommendations, price_analysis
-
-# Streamlit UI
-st.title("Analisador de Ação Brasileira - Análise Setorial")
-
-# Input do ticker
-ticker = st.text_input("Digite o ticker da ação (exemplo: ITUB4 para Itaú, PETR4 para Petrobras)", "PETR4").upper()
+def main(): st.title("Análise de Precificação de Ações") ticker = st.text_input("Digite o código da ação (ex: PETR4.SA)")
 
 if ticker:
-    # Buscar dados fundamentais da ação
-    pe_ratio, pb_ratio, eps, eps_growth, market_cap, current_price, dividend_yield, target_price, sector = get_fundamentals(ticker)
-    
-    # Buscar dados adicionais do Fundamentus (ROE, Dívida/Patrimônio)
-    roe, debt_to_equity = get_additional_data(ticker)
-    
-    # Calcular o preço teto
-    target_price_calculated = calculate_target_price(eps)
-    
-    # Exibir os dados e análise
-    st.write(f"**Setor:** {sector if sector else 'Não disponível'}")
-    st.write(f"**P/E Ratio (Preço/Lucro):** {pe_ratio if pe_ratio else 'Dados não disponíveis'}")
-    st.write(f"**P/VPA (Preço/Valor Patrimonial):** {pb_ratio if pb_ratio else 'Dados não disponíveis'}")
-    st.write(f"**Crescimento de Lucros (EPS Growth):** {eps_growth if eps_growth else 'Dados não disponíveis'}%")
-    st.write(f"**Dividend Yield:** {dividend_yield if dividend_yield else 'Dados não disponíveis'}")
-    st.write(f"**Capitalização de Mercado:** {market_cap if market_cap else 'Dados não disponíveis'}")
-    
-    st.write("\n### Análise Completa")
-    recommendations, price_analysis = analyze_sector(sector, pe_ratio, pb_ratio, eps_growth, market_cap, current_price, dividend_yield, roe, debt_to_equity, target_price_calculated)
-    
-    for rec in recommendations:
-        st.write(f"**{rec}**")
-    st.write(f"**Análise de Preço Teto:** {price_analysis}")
+    metrics, sector = calculate_metrics(ticker)
+    if metrics:
+        st.subheader(f"Setor: {sector}")
+        st.write("### Indicadores Financeiros")
+        st.write(pd.DataFrame(metrics.items(), columns=["Indicador", "Valor"]))
+
+        # Lógica de recomendação básica
+        recommendation = ""
+        if sector == "Technology" and metrics.get("P/S Ratio", 0) < 5:
+            recommendation = "A ação pode estar barata."
+        elif sector == "Energy" and metrics.get("EV/EBITDA", 10) < 5:
+            recommendation = "A ação pode estar subvalorizada."
+        elif sector == "Financial Services" and metrics.get("P/B Ratio", 1.5) < 1:
+            recommendation = "A ação pode estar barata."
+        elif sector == "Healthcare" and metrics.get("P/E Ratio", 20) < 15:
+            recommendation = "A ação pode estar barata."
+        else:
+            recommendation = "Não há sinais claros de subvalorização."
+
+        st.write("### Recomendação: ")
+        st.success(recommendation)
+
+if name == "main": main()
+
