@@ -7,7 +7,9 @@ import streamlit as st
 
 # Função para baixar os dados históricos dos ativos
 def get_data(tickers, start_date, end_date):
-    data = yf.download(tickers, start=start_date, end=end_date)['Adj Close']
+    data = yf.download(tickers, start=start_date, end=end_date)
+    # Selecione 'Adj Close' para cada ativo
+    data = data['Adj Close']
     return data
 
 # Função para calcular o retorno diário e a matriz de covariância
@@ -27,7 +29,7 @@ def optimize_portfolio(mean_returns, cov_matrix, risk_free_rate=0):
         p_return = portfolio_return(weights)
         p_volatility = portfolio_volatility(weights)
         return -(p_return - risk_free_rate) / p_volatility
-
+    
     constraints = ({'type': 'eq', 'fun': lambda weights: np.sum(weights) - 1})
     bounds = tuple((0, 1) for asset in range(num_assets))
     result = minimize(negative_sharpe_ratio, num_assets * [1. / num_assets,], method='SLSQP', bounds=bounds, constraints=constraints)
